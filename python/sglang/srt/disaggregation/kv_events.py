@@ -355,3 +355,42 @@ class EventPublisherFactory:
         except KeyError as exc:
             raise ValueError(f"Unknown event publisher '{kind}'") from exc
         return constructor(**config_dict)
+
+
+# Add DynamoEventPublisher
+class DynamoEventPublisher(EventPublisher):
+    """Publisher that forwards events to Dynamo via the C-API bindings."""
+
+    def __init__(self, kv_block_size: int = 16):
+        # block_size (tokens per block) must match allocator; default 16.
+        from .dynamo_event_manager import KVCacheEventManager
+
+        self._mgr = KVCacheEventManager(kv_block_size=kv_block_size)
+
+    def publish(self, events: EventBatch) -> None:  # type: ignore[override]
+        # Only handle KVEventBatch; ignore others quietly
+        if not isinstance(events, KVEventBatch):
+            return
+        for ev in events.events:
+            if isinstance(ev, BlockStored):
+                self._mgr.publish_stored(
+                    token_ids=ev.token_ids,
+                    block_hashes=ev.block_hashes,
+                    parent_hash=ev.parent_block_hash,
+                    block_size=ev.block_size,
+                    lora_id=ev.lora_id,
+                )
+            elif isinstance(ev, BlockRemoved):
+                self._mgr.publish_removed(ev.block_hashes)
+            elif isinstance(ev, AllBlocksCleared):
+                # We could broadcast each removed block, but Radix clears by
+                # resetting cache; upstream workers will clear too. For now
+                # no-op.
+                continue
+
+    def shutdown(self) -> None:  # nothing to do
+        return
+
+
+# Register new publisher
+EventPublisherFactory._registry["dynamo"] = DynamoEventPublisher
