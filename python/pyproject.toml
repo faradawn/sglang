@@ -57,7 +57,6 @@ dependencies = [
   "uvicorn",
   "uvloop",
   "xgrammar==0.1.24",
-  "sgl-kernel==0.3.9.post2",
   "torch==2.8.0",
   "torchaudio==2.8.0",
   "torchvision",
@@ -66,8 +65,7 @@ dependencies = [
   "openai==1.99.1",
   "tiktoken",
   "anthropic>=0.20.0",
-  "torch_memory_saver==0.0.8",
-  "decord",
+  "torch_memory_saver==0.0.8"
 ]
 
 [project.optional-dependencies]

@@ -3,7 +3,8 @@ FROM nvidia/cuda:${CUDA_VERSION}-cudnn-devel-ubuntu22.04 as base
 
 ARG BUILD_TYPE=all
 ARG BRANCH_TYPE=remote
-ARG DEEPEP_COMMIT=b92d0d4860ce6866cd6d31bfbae937f9a7a3772b
+ARG DEEPEP_COMMIT=1fd57b0276311d035d16176bb0076426166e52f3
+ARG FLASHINFER_COMMIT=68b8e6db730e81c9ac5ae3ed55b4b01dde5df0a5
 ARG CMAKE_BUILD_PARALLEL_LEVEL=2
 ENV DEBIAN_FRONTEND=noninteractive \
     CUDA_HOME=/usr/local/cuda \
@@ -57,7 +58,7 @@ RUN mkdir -p /tmp/gdrcopy && cd /tmp \
  && cd / && rm -rf /tmp/gdrcopy
 
 # Fix DeepEP IBGDA symlink
-RUN ln -sf /usr/lib/x86_64-linux-gnu/libmlx5.so.1 /usr/lib/x86_64-linux-gnu/libmlx5.so
+RUN ln -sf /usr/lib/$(uname -m)-linux-gnu/libmlx5.so.1 /usr/lib/$(uname -m)-linux-gnu/libmlx5.so
 
 FROM scratch AS local_src
 COPY . /src
@@ -82,15 +83,30 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel html5li
       *) echo "Unsupported CUDA version: $CUDA_VERSION" && exit 1 ;; \
     esac \
  && python3 -m pip install --no-cache-dir -e "python[${BUILD_TYPE}]" --extra-index-url https://download.pytorch.org/whl/cu${CUINDEX} \
- && python3 -m pip install --no-cache-dir nvidia-nccl-cu12==2.27.6 --force-reinstall --no-deps \
- && python3 -m flashinfer --download-cubin \
- && if [ "$CUDA_VERSION" = "12.6.1" ]; then \
-      python3 -m pip install --no-cache-dir https://github.com/sgl-project/whl/releases/download/v0.3.9.post2/sgl_kernel-0.3.9.post2+cu124-cp310-abi3-manylinux2014_x86_64.whl --force-reinstall --no-deps ; \
-    fi
+ && python3 -m pip install --no-cache-dir nvidia-nccl-cu12==2.27.6 --force-reinstall --no-deps
+
+# Install custom sgl-kernel (copy from host and install)
+ARG FLASHINFER_COMMIT
+COPY sgl-kernel/dist/sgl_kernel-*.whl /tmp/
+RUN python3 -m pip install --no-cache-dir /tmp/sgl_kernel-*.whl --force-reinstall --no-deps && rm -f /tmp/sgl_kernel-*.whl
+
+# Install NVIDIA CUTLASS DSL wheel
+COPY nvidia_cutlass_dsl-4.2.1.dev1-cp312-cp312-manylinux_2_28_aarch64.whl /tmp/
+RUN python3 -m pip install --no-cache-dir /tmp/nvidia_cutlass_dsl-4.2.1.dev1-cp312-cp312-manylinux_2_28_aarch64.whl && rm -f /tmp/nvidia_cutlass_dsl-4.2.1.dev1-cp312-cp312-manylinux_2_28_aarch64.whl
+
+# Install custom FlashInfer
+RUN python3 -m pip uninstall -y flashinfer flashinfer_python || true \
+ && cd /sgl-workspace \
+ && git clone https://github.com/fzyzcjy/flashinfer.git flashinfer-custom --recursive \
+ && cd flashinfer-custom \
+ && export TORCH_CUDA_ARCH_LIST="9.0a 9.0 10.0 10.0a" \
+ && git checkout ${FLASHINFER_COMMIT} \
+ && pip install -e . -v --no-build-isolation --no-deps --break-system-packages \
+ && python3 -m flashinfer --download-cubin
 
 # Download source files
 RUN wget https://developer.download.nvidia.com/compute/redist/nvshmem/3.3.9/source/nvshmem_src_cuda12-all-all-3.3.9.tar.gz && \
-    git clone https://github.com/deepseek-ai/DeepEP.git && \
+    git clone https://github.com/fzyzcjy/DeepEP.git && \
     cd DeepEP && git checkout ${DEEPEP_COMMIT} && sed -i 's/#define NUM_CPU_TIMEOUT_SECS 100/#define NUM_CPU_TIMEOUT_SECS 1000/' csrc/kernels/configs.cuh && \
     cd .. && \
     tar -xf nvshmem_src_cuda12-all-all-3.3.9.tar.gz && \
@@ -169,8 +185,8 @@ RUN apt-get update && apt-get install -y \
 
 RUN apt update -y \
     && apt install -y --no-install-recommends gnupg \
-    && echo "deb http://developer.download.nvidia.com/devtools/repos/ubuntu2004/amd64 /" | tee /etc/apt/sources.list.d/nvidia-devtools.list \
-    && apt-key adv --fetch-keys http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/7fa2af80.pub \
+    && echo "deb http://developer.download.nvidia.com/devtools/repos/ubuntu2004/$(if [ "$(uname -m)" = "aarch64" ]; then echo "arm64"; else echo "amd64"; fi) /" | tee /etc/apt/sources.list.d/nvidia-devtools.list \
+    && apt-key adv --fetch-keys http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/$(if [ "$(uname -m)" = "aarch64" ]; then echo "arm64"; else echo "x86_64"; fi)/7fa2af80.pub \
     && apt update -y \
     && apt install nsight-systems-cli -y
 
@@ -383,6 +399,9 @@ EOF
 
 RUN set -euxo ; \
     curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+
+# Reinstall sglang-router to get the latest version
+RUN pip uninstall -y sglang-router && pip install sglang-router
 
 # Set workspace directory
 WORKDIR /sgl-workspace/sglang

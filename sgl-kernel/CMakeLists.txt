@@ -80,8 +80,8 @@ FetchContent_Populate(repo-triton)
 # flashinfer
 FetchContent_Declare(
     repo-flashinfer
-    GIT_REPOSITORY https://github.com/flashinfer-ai/flashinfer.git
-    GIT_TAG        bc29697ba20b7e6bdb728ded98f04788e16ee021
+    GIT_REPOSITORY https://github.com/fzyzcjy/flashinfer.git
+    GIT_TAG        68b8e6db730e81c9ac5ae3ed55b4b01dde5df0a5
     GIT_SHALLOW    OFF
 )
 FetchContent_Populate(repo-flashinfer)
@@ -90,7 +90,7 @@ FetchContent_Populate(repo-flashinfer)
 FetchContent_Declare(
     repo-flash-attention
     GIT_REPOSITORY https://github.com/sgl-project/sgl-attn
-    GIT_TAG        sgl-kernel
+    GIT_TAG        f9af0c2a1d82ab1812e6987e9338363cc2bf0f8d
     GIT_SHALLOW    OFF
 )
 FetchContent_Populate(repo-flash-attention)
