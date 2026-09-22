@@ -383,6 +383,8 @@ export const Qwen35Deployment = () => {
     const isMultinode = !!hwConfig.multinode;
     const nnodes = hwConfig.nnodes || 1;
     const gbHw = hardware === 'gb200' || hardware === 'gb300';
+    const specNumSteps = (gbHw && quantization === 'fp8') ? 6 : 3;
+    const specDraftTokens = (gbHw && quantization === 'fp8') ? 7 : 4;
 
     // Initialize the base command
     let cmd = `sglang serve --model-path ${modelName}`;
@@ -425,7 +427,7 @@ export const Qwen35Deployment = () => {
     const commandRules = {
       reasoning: (value) => value === 'enabled' ? '--reasoning-parser qwen3' : null,
       toolcall: (value) => value === 'enabled' ? '--tool-call-parser qwen3_coder' : null,
-      speculative: (value) => value === 'enabled' ? '--speculative-algorithm NEXTN \\\n  --speculative-num-steps 3 \\\n  --speculative-eagle-topk 1 \\\n  --speculative-num-draft-tokens 4' : null,
+      speculative: (value) => value === 'enabled' ? `--speculative-algorithm NEXTN \\\n  --speculative-num-steps ${specNumSteps} \\\n  --speculative-eagle-topk 1 \\\n  --speculative-num-draft-tokens ${specDraftTokens}` : null,
       mambaCache: (value) => value === 'v2' ? '--mamba-radix-cache-strategy extra_buffer' : null,
     };
 
